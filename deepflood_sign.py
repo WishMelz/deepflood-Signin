@@ -262,7 +262,16 @@ def get_signin_stats(df_cookie, days=30):
         while page <= 10:  # 最多查询10页，防止无限循环
             url = f"https://www.deepflood.com/api/account/credit/page-{page}"
             response = requests.get(url, headers=headers, impersonate="chrome120")
-            data = response.json()
+            
+            if response.status_code != 200:
+                print(f"请求失败，状态码: {response.status_code}")
+                break
+
+            try:
+                data = response.json()
+            except Exception:
+                print(f"响应非JSON格式: {response.text[:100]}")
+                break
             
             if not data.get("success") or not data.get("data"):
                 break
@@ -355,8 +364,8 @@ if __name__ == "__main__":
     accounts = []
 
     # 先收集账号密码配置
-    user = os.getenv("USER")
-    password = os.getenv("PASS")
+    user = os.getenv("USER", "")
+    password = os.getenv("PASS", "")
     if user and password:
         accounts.append({"user": user, "password": password})
 
@@ -475,5 +484,4 @@ if __name__ == "__main__":
             print("所有Cookie已成功保存")
         except Exception as e:
             print(f"保存Cookie变量异常: {e}")
-
 
