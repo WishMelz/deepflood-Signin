@@ -6,6 +6,9 @@ import json
 from datetime import datetime, timedelta
 from curl_cffi import requests
 from yescaptcha import YesCaptchaSolver, YesCaptchaSolverError
+
+# 统一 impersonate 目标，便于后续调整
+IMPERSONATE = os.getenv("IMPERSONATE", "chrome136")
 # ---------------- 通知模块动态加载 ----------------
 hadsend = False
 send = None
@@ -172,7 +175,7 @@ def session_login(user, password, api_base_url, client_key):
         print(f"验证码错误: {e}")
         return None
 
-    session = requests.Session(impersonate="chrome110")
+    session = requests.Session(impersonate=IMPERSONATE)
     session.get("https://www.deepflood.com/signIn.html")
 
     data = {
@@ -196,6 +199,15 @@ def session_login(user, password, api_base_url, client_key):
     }
     try:
         response = session.post("https://www.deepflood.com/api/account/signIn", json=data, headers=headers)
+
+        if response.status_code == 403:
+            html_body = response.text
+            print("登录接口返回403，响应内容如下：")
+            print(html_body)
+            if "Just a moment" in html_body:
+                return None
+            return None
+
         resp_json = response.json()
         if resp_json.get("success"):
             cookies = session.cookies.get_dict()
@@ -222,7 +234,16 @@ def sign(df_cookie, df_random):
     }
     try:
         url = f"https://www.deepflood.com/api/attendance?random={df_random}"
-        response = requests.post(url, headers=headers, impersonate="chrome110")
+        response = requests.post(url, headers=headers, impersonate=IMPERSONATE)
+
+        if response.status_code == 403:
+            html_body = response.text
+            print("deepflood返回403，响应内容如下：")
+            print(html_body)
+            if "Just a moment" in html_body:
+                return "blocked", "被拦截了"
+            return "error", "403 Forbidden"
+
         data = response.json()
         msg = data.get("message", "")
         if "鸡腿" in msg or data.get("success"):
@@ -261,8 +282,17 @@ def get_signin_stats(df_cookie, days=30):
         
         while page <= 10:  # 最多查询10页，防止无限循环
             url = f"https://www.deepflood.com/api/account/credit/page-{page}"
-            response = requests.get(url, headers=headers, impersonate="chrome110")
-            data = response.json()
+            response = requests.get(url, headers=headers, impersonate=IMPERSONATE)
+            
+            if response.status_code != 200:
+                print(f"请求失败，状态码: {response.status_code}")
+                break
+
+            try:
+                data = response.json()
+            except Exception:
+                print(f"响应非JSON格式: {response.text[:100]}")
+                break
             
             if not data.get("success") or not data.get("data"):
                 break
@@ -355,8 +385,8 @@ if __name__ == "__main__":
     accounts = []
 
     # 先收集账号密码配置
-    user = os.getenv("USER")
-    password = os.getenv("PASS")
+    user = os.getenv("USER", "")
+    password = os.getenv("PASS", "")
     if user and password:
         accounts.append({"user": user, "password": password})
 
